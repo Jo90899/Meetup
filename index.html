@@ -19,9 +19,13 @@
                 <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition">Generate User Inputs</button>
             </form>
             <div id="userInputs" class="mt-8"></div>
+            <div id="map" class="mt-8" style="height: 400px; width: 100%;"></div>
             <div id="result" class="mt-8"></div>
+            <div id="error-messages" class="mt-4 text-red-500" style="display: none;"></div>
+            <div id="loading" class="mt-4 text-blue-500" style="display: none;">Loading...</div>
         </div>
     </div>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places,geometry" async defer></script>
     <script src="script.js"></script>
 </body>
 </html>
