@@ -1,26 +1,26 @@
 let map;
 
 function initMap() {
-  map = new google.maps.Map(document.getElementById("map"), {
-    center: { lat: 0, lng: 0 },
-    zoom: 8,
+  map = new mapboxgl.Map({
+    container: 'map', // HTML container ID
+    style: 'mapbox://styles/mapbox/streets-v11', // Mapbox style
+    center: [0, 0], // Starting position [lng, lat]
+    zoom: 8 // Starting zoom
   });
 }
 
 function initAutocomplete() {
-  const addressInputs = document.querySelectorAll('input[name^="address"]');
-  addressInputs.forEach(input => {
-    const autocomplete = new google.maps.places.Autocomplete(input, {
-      types: ['address'],
-      fields: ['formatted_address', 'geometry']
-    });
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place.geometry) {
-        console.log("No details available for input: '" + place.name + "'");
-        return;
-      }
-      input.value = place.formatted_address;
+  const geocoder = new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    types: 'address',
+    placeholder: 'Enter an address'
+  });
+
+  document.querySelectorAll('input[name^="address"]').forEach(input => {
+    const parent = input.parentElement;
+    geocoder.addTo(parent);
+    geocoder.on('result', function(e) {
+      input.value = e.result.place_name;
     });
   });
 }
@@ -72,17 +72,18 @@ function generateUserInputs(numUsers) {
 }
 
 async function geocodeAddress(address) {
-  const geocoder = new google.maps.Geocoder();
-  return new Promise((resolve, reject) => {
-    geocoder.geocode({ address: address }, (results, status) => {
-      if (status === "OK") {
-        resolve(results[0].geometry.location);
-      } else {
-        reject(new Error(`Geocode was not successful for the following reason: ${status}`));
-      }
-    });
-  });
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxgl.accessToken}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if (data.features && data.features.length > 0) {
+    const location = data.features[0].geometry.coordinates;
+    return { lat: location[1], lng: location[0] }; // Mapbox returns [lng, lat], so reverse
+  } else {
+    throw new Error('Geocode failed');
+  }
 }
+
 
 async function collectUserData() {
   const users = [];
@@ -107,32 +108,19 @@ async function collectUserData() {
   return users;
 }
 
-function calculateRoute(driver, passengers, meetingLocation) {
-  const directionsService = new google.maps.DirectionsService();
-  const waypoints = passengers.map(passenger => ({
-    location: passenger.location,
-    stopover: true
-  }));
-
-  return new Promise((resolve, reject) => {
-    directionsService.route(
-      {
-        origin: driver.location,
-        destination: meetingLocation,
-        waypoints: waypoints,
-        optimizeWaypoints: true,
-        travelMode: google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK) {
-          resolve(result);
-        } else {
-          reject(new Error(`Directions request failed due to ${status}`));
-        }
-      }
-    );
-  });
+async function calculateRoute(driver, passengers, meetingLocation) {
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${driver.location.lng},${driver.location.lat};${meetingLocation.lng},${meetingLocation.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if (data.routes && data.routes.length > 0) {
+    return data.routes[0];
+  } else {
+    throw new Error('Directions request failed');
+  }
 }
+
 
 async function optimizeRoutes(drivers, passengers, meetingLocation) {
   const routes = [];
@@ -240,39 +228,43 @@ function displayResults(meetingPlace, routes, remainingPassengers) {
 }
 
 function updateMap(users, meetingPlace, routes) {
-  // Clear existing markers and routes
-  map.clearInstanceListeners();
-  
-  // Add user markers
-  users.forEach(user => {
-    new google.maps.Marker({
-      position: user.location,
-      map: map,
-      title: `User ${user.id}`
+  map.on('load', () => {
+    // Add markers for users
+    users.forEach(user => {
+      new mapboxgl.Marker()
+        .setLngLat([user.location.lng, user.location.lat])
+        .addTo(map);
+    });
+
+    // Add meeting place marker
+    new mapboxgl.Marker({ color: 'blue' })
+      .setLngLat([meetingPlace.lng, meetingPlace.lat])
+      .addTo(map);
+
+    // Display routes as lines
+    routes.forEach(route => {
+      map.addLayer({
+        id: `route-${route.driver.id}`,
+        type: 'line',
+        source: {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: route.geometry // Assuming route.geometry is in GeoJSON format
+          }
+        },
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#ff7f50',
+          'line-width': 5
+        }
+      });
     });
   });
-  
-  // Add meeting place marker
-  new google.maps.Marker({
-    position: meetingPlace.geometry.location,
-    map: map,
-    icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-    title: 'Meeting Location'
-  });
-  
-  // Add route polylines
-  const directionsRenderer = new google.maps.DirectionsRenderer();
-  directionsRenderer.setMap(map);
-  
-  routes.forEach((route, index) => {
-    directionsRenderer.setDirections(route.route);
-  });
-  
-  // Fit map to show all markers and routes
-  const bounds = new google.maps.LatLngBounds();
-  users.forEach(user => bounds.extend(user.location));
-  bounds.extend(meetingPlace.geometry.location);
-  map.fitBounds(bounds);
 }
+
 
 // Initialize the map when the page loads
