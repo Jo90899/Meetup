@@ -10,17 +10,30 @@ function initMap() {
 }
 
 function initAutocomplete() {
-  const geocoder = new MapboxGeocoder({
-    accessToken: mapboxgl.accessToken,
-    types: 'address',
-    placeholder: 'Enter an address'
-  });
+  // Select all address input fields
+  const addressInputs = document.querySelectorAll('input[name^="address"]');
 
-  document.querySelectorAll('input[name^="address"]').forEach(input => {
+  // Iterate over each address input
+  addressInputs.forEach((input, index) => {
+    // Create a new MapboxGeocoder instance for each input field
+    const geocoder = new MapboxGeocoder({
+      accessToken: mapboxgl.accessToken,
+      types: 'address',
+      placeholder: 'Enter an address'
+    });
+
+    // Add the geocoder to the parent element of the input field
     const parent = input.parentElement;
-    geocoder.addTo(parent);
-    geocoder.on('result', function(e) {
-      input.value = e.result.place_name;
+    parent.appendChild(geocoder.onAdd(map));
+
+    // Listen for the result event to populate the correct input field
+    geocoder.on('result', (e) => {
+      input.value = e.result.place_name; // Set the input field value to the geocoded address
+    });
+
+    // Remove any previous value when clearing the input
+    geocoder.on('clear', () => {
+      input.value = '';
     });
   });
 }
