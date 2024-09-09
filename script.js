@@ -138,28 +138,27 @@ async function optimizeRoutes(drivers, passengers, meetingLocation) {
   return routes;
 }
 
-function selectMeetingLocation(users) {
-  const placesService = new google.maps.places.PlacesService(map);
-  const bounds = new google.maps.LatLngBounds();
-  users.forEach(user => bounds.extend(user.location));
+async function selectMeetingLocation(users) {
+  // Calculate the bounding box (LngLatBounds) for user locations
+  const bounds = new mapboxgl.LngLatBounds();
+  users.forEach(user => bounds.extend([user.location.lng, user.location.lat]));
 
-  return new Promise((resolve, reject) => {
-    placesService.nearbySearch(
-      {
-        bounds: bounds,
-        type: ['cafe', 'restaurant'], // You can adjust these types
-        rankBy: google.maps.places.RankBy.PROMINENCE
-      },
-      (results, status) => {
-        if (status === google.maps.places.PlacesServiceStatus.OK) {
-          // Select the most prominent place as the meeting location
-          resolve(results[0]);
-        } else {
-          reject(new Error(`Places search failed due to ${status}`));
-        }
-      }
-    );
-  });
+  // Use Mapbox Geocoding API to find places within the bounding box
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/cafe,restaurant.json?bbox=${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}&access_token=${mapboxgl.accessToken}`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.features && data.features.length > 0) {
+      // Resolve with the first result (most prominent place)
+      return data.features[0];
+    } else {
+      throw new Error('No places found within bounds');
+    }
+  } catch (error) {
+    throw new Error(`Places search failed: ${error.message}`);
+  }
 }
 
 function showError(message) {
